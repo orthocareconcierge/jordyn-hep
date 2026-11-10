@@ -96,6 +96,15 @@ body{font-family:'Jost',sans-serif;background:var(--black);color:var(--white);mi
 .log-row .setn{font-size:10px;color:var(--muted);width:38px;flex-shrink:0;letter-spacing:0.05em;}
 .log-in{flex:1;background:var(--dark);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--white);font-family:'Jost',sans-serif;font-size:12px;padding:7px 8px;min-width:0;}
 .log-in::placeholder{color:var(--mid);}
+.swap-box{background:var(--dark);border:1px solid rgba(201,168,76,0.25);border-radius:8px;padding:9px;margin:4px 0 8px;}
+.swap-box .sb-h{font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);margin-bottom:7px;}
+.swap-opt{display:block;width:100%;text-align:left;background:var(--charcoal);border:1px solid rgba(255,255,255,0.1);color:var(--white);border-radius:6px;padding:10px;margin-bottom:5px;font-family:'Jost',sans-serif;font-size:13px;cursor:pointer;}
+.swap-opt:active{border-color:var(--gold);}
+.swap-writein{display:flex;gap:6px;margin:6px 0;align-items:stretch;}
+.swap-writein .log-in{flex:1;}
+.swap-writein .swap-opt{width:auto;white-space:nowrap;margin-bottom:0;align-self:stretch;}
+.tag-custom{background:rgba(201,168,76,0.16);color:var(--gold-light);}
+.recall-hint{font-size:10.5px;color:var(--gold-light);background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.18);border-radius:6px;padding:6px 8px;margin-bottom:8px;line-height:1.45;}
 .log-in:focus{outline:none;border-color:var(--gold);}
 .rm-set{background:none;border:none;color:var(--mid);font-size:15px;padding:2px 4px;cursor:pointer;flex-shrink:0;}
 .rm-set:active{color:var(--red);}
@@ -349,10 +358,19 @@ function loadPreset(p){
     if(!confirm('Load '+PRESETS[p].label+'? This replaces your current list for today.')) return;
   }
   today.preset=p; today.cat=p.split('-')[0];
-  today.items = PRESETS[p].ids.map(id=>({id, sets:[blankSet(),blankSet(),blankSet()], open:false}));
+  today.items = PRESETS[p].ids.map(id=>({id, sets:freshItemSets(EX[id].name), recalled:!!recallSets(EX[id].name), open:false}));
   persist(); renderCats(); renderToday();
 }
-function blankSet(){ return {reps:'', load:''}; }
+function blankSet(){ return {reps:'', load:'', rpe:''}; }
+function groupOf(id){ return GROUPS.find(function(g){ return g.ids.indexOf(id)>-1; }); }
+function recallSets(name){
+  for(var li=0; li<logs.length; li++){
+    var hit=(logs[li].items||[]).filter(function(x){ return x.name===name; })[0];
+    if(hit && hit.sets && hit.sets.length) return hit.sets.map(function(s){ return {reps:s.reps||'', load:s.load||'', rpe:s.rpe||''}; });
+  }
+  return null;
+}
+function freshItemSets(name){ return recallSets(name) || [blankSet(),blankSet(),blankSet()]; }
 
 /* ---- today's list ---- */
 function renderToday(){
@@ -362,23 +380,31 @@ function renderToday(){
   bindDrag();
 }
 function cardHTML(it,i){
-  const e=EX[it.id]; if(!e) return '';
-  const tagClass = e.tag==='Strength'?'tag-strength':'tag-stability';
-  const vid = e.video ? `<div class="ex-vid"><video src="${e.video}?v=1" autoplay muted loop playsinline preload="metadata"></video></div>` : '';
-  const cues = '<ul>'+e.cues.map(c=>`<li>${c}</li>`).join('')+'</ul>';
+  const custom = !!it.custom;
+  const e = custom ? null : EX[it.id];
+  if(!custom && !e) return '';
+  const name = custom ? it.name : e.name;
+  const tagTxt = custom ? 'Custom' : e.tag;
+  const tagClass = custom ? 'tag-custom' : (e.tag==='Strength'?'tag-strength':'tag-stability');
+  const rxTxt = custom ? 'Your write-in exercise' : e.rx;
+  const vid = (!custom && e.video) ? `<div class="ex-vid"><video src="${e.video}?v=1" autoplay muted loop playsinline preload="metadata"></video></div>` : '';
+  const cues = custom ? '' : '<ul>'+e.cues.map(c=>`<li>${c}</li>`).join('')+'</ul>';
   const sets = it.sets.map((s,si)=>
     `<div class="log-row"><span class="setn">Set ${si+1}</span>`+
-    `<input class="log-in" type="text" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="setVal(${i},${si},'reps',this.value)">`+
-    `<input class="log-in" type="text" placeholder="weight / band" value="${s.load}" onchange="setVal(${i},${si},'load',this.value)">`+
+    `<input class="log-in" type="text" inputmode="numeric" placeholder="reps" value="${s.reps||''}" onchange="setVal(${i},${si},'reps',this.value)">`+
+    `<input class="log-in" type="text" placeholder="weight / band" value="${s.load||''}" onchange="setVal(${i},${si},'load',this.value)">`+
+    `<input class="log-in" style="flex:0.7" type="text" inputmode="decimal" placeholder="RPE" value="${s.rpe||''}" onchange="setVal(${i},${si},'rpe',this.value)">`+
     `<button class="rm-set" onclick="rmSet(${i},${si})">&times;</button></div>`).join('');
+  const recallHint = it.recalled ? '<div class="recall-hint">&#8635; Your last numbers for this exercise loaded in. Update them for today.</div>' : '';
   return `<div class="ex-card${it.open?' open':''}" draggable="true" data-i="${i}">
     <div class="ex-head">
       <span class="drag-handle" title="Drag to reorder">&#9776;</span>
       <div class="ex-main" onclick="toggle(${i})">
-        <div class="ex-name">${e.name}<span class="tag ${tagClass}">${e.tag}</span></div>
-        <div class="ex-rx">${e.rx}</div>
+        <div class="ex-name">${name}<span class="tag ${tagClass}">${tagTxt}</span></div>
+        <div class="ex-rx">${rxTxt}</div>
       </div>
       <div class="ex-tools">
+        <button class="tool-btn" onclick="openSwap(${i})" title="Swap">&#8646;</button>
         <button class="tool-btn" onclick="move(${i},-1)" title="Up">&#9650;</button>
         <button class="tool-btn" onclick="move(${i},1)" title="Down">&#9660;</button>
         <button class="tool-btn rm" onclick="removeEx(${i})" title="Remove">&#128465;</button>
@@ -387,7 +413,8 @@ function cardHTML(it,i){
     </div>
     <div class="ex-body">
       ${vid}${cues}
-      <div class="log-wrap"><div class="log-title">Log your sets</div>${sets}
+      <div id="swap-${i}"></div>
+      <div class="log-wrap"><div class="log-title">Log your sets &middot; reps / weight / RPE</div>${recallHint}${sets}
       <button class="add-set" onclick="addSet(${i})">+ Add set</button></div>
     </div>
   </div>`;
@@ -421,7 +448,23 @@ function openBank(){
   document.getElementById('bank-modal').classList.add('open');
 }
 function closeBank(){ document.getElementById('bank-modal').classList.remove('open'); }
-function addEx(id){ today.items.push({id, sets:[blankSet(),blankSet(),blankSet()], open:false}); persist(); closeBank(); renderToday(); }
+function addEx(id){ today.items.push({id, sets:freshItemSets(EX[id].name), recalled:!!recallSets(EX[id].name), open:false}); persist(); closeBank(); renderToday(); }
+
+/* ---- swap an exercise (same group) or write in a custom one ---- */
+function openSwap(i){
+  today.items[i].open=true; persist(); renderToday();
+  var box=document.getElementById('swap-'+i); if(!box) return;
+  var it=today.items[i]; var g = it.custom ? null : groupOf(it.id);
+  var opts = g ? g.ids.filter(function(id){ return id!==it.id; }) : [];
+  var h='<div class="swap-box"><div class="sb-h">Swap this exercise</div>';
+  h += opts.map(function(id){ return '<button class="swap-opt" onclick="doSwap('+i+',\''+id+'\')">'+EX[id].name+' <span style="color:var(--gold-dark);font-size:10px">'+EX[id].tag+'</span></button>'; }).join('');
+  h += '<div class="swap-writein"><input class="log-in" id="swapwi-'+i+'" placeholder="Or write in your own"><button class="swap-opt" onclick="swapCustom('+i+')">Add</button></div>';
+  h += '<button class="swap-opt" style="text-align:center;color:var(--muted)" onclick="clearSwap('+i+')">Cancel</button></div>';
+  box.innerHTML=h;
+}
+function clearSwap(i){ var b=document.getElementById('swap-'+i); if(b) b.innerHTML=''; }
+function doSwap(i,newId){ today.items[i]={id:newId, sets:freshItemSets(EX[newId].name), recalled:!!recallSets(EX[newId].name), open:true}; persist(); renderToday(); }
+function swapCustom(i){ var el=document.getElementById('swapwi-'+i); var nm=(el&&el.value||'').trim(); if(!nm) return; today.items[i]={custom:true, name:nm, sets:freshItemSets(nm), recalled:!!recallSets(nm), open:true}; persist(); renderToday(); }
 
 /* ---- save + progress ---- */
 function saveWorkout(){
@@ -429,7 +472,7 @@ function saveWorkout(){
   const d=new Date();
   const title = today.preset ? (CATS.find(c=>c.key===today.preset.split('-')[0]).label+' · '+PRESETS[today.preset].label) : 'Custom workout';
   const entry = { date:d.toISOString(), dateStr:d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}),
-    title, items: today.items.map(it=>({ name:EX[it.id].name, sets: it.sets.filter(s=>s.reps||s.load) })) };
+    title, items: today.items.map(it=>({ name: it.custom ? it.name : EX[it.id].name, sets: it.sets.filter(s=>s.reps||s.load||s.rpe) })) };
   logs.unshift(entry); persist();
   alert('Saved. Nice work.');
   go('page-progress');
@@ -439,7 +482,7 @@ function renderProgress(){
   if(!logs.length){ box.innerHTML='<div class="empty-note">No saved workouts yet. Build one and hit save.</div>'; return; }
   box.innerHTML = logs.map((L,li)=>{
     const ex = L.items.map(it=>{
-      const done = it.sets.map(s=>[s.reps,s.load].filter(Boolean).join(' @ ')).filter(Boolean);
+      const done = it.sets.map(s=>{ var pp=[]; if(s.reps) pp.push(s.reps+' reps'); if(s.load) pp.push(s.load); var tt=pp.join(' @ '); if(s.rpe) tt+=(tt?' · ':'')+'RPE '+s.rpe; return tt; }).filter(Boolean);
       const detail = done.length ? ' <span style="color:var(--muted)">('+done.join(', ')+')</span>' : '';
       return `<div class="lc-ex"><b>${it.name}</b>${detail}</div>`;
     }).join('');
