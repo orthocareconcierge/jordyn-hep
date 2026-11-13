@@ -113,6 +113,12 @@ body{font-family:'Jost',sans-serif;background:var(--black);color:var(--white);mi
 .add-ex-btn{background:linear-gradient(135deg,rgba(201,168,76,0.12),rgba(201,168,76,0.04));border:1px dashed rgba(201,168,76,0.4);color:var(--gold);border-radius:var(--radius);font-family:'Jost',sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;font-weight:500;padding:13px;width:100%;cursor:pointer;margin-top:4px;}
 .save-btn{background:linear-gradient(135deg,var(--gold-dark),var(--gold));border:none;color:#1a1400;font-family:'Jost',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;padding:15px;width:100%;border-radius:var(--radius);cursor:pointer;margin-top:14px;}
 .save-btn:active{transform:translateY(1px);}
+.kelly-note{background:var(--card,#1b1b1b);border:1px solid rgba(201,168,76,0.28);border-radius:var(--radius);color:#fff;font-family:'Jost',sans-serif;font-size:13px;width:100%;min-height:70px;padding:12px;resize:vertical;margin-top:4px;-webkit-appearance:none;}
+.kelly-note:focus{outline:none;border-color:var(--gold);}
+.kelly-note::placeholder{color:var(--muted);}
+.lc-note{background:rgba(201,168,76,0.08);border-left:3px solid var(--gold);border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12.5px;color:#e9e4d6;font-style:italic;}
+.share-btn{background:var(--card,#1b1b1b);border:1px solid var(--gold);color:var(--gold);font-family:'Jost',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:13px;width:100%;border-radius:var(--radius);cursor:pointer;margin-bottom:14px;}
+.share-btn:active{transform:translateY(1px);}
 .empty-note{font-size:12px;color:var(--muted);font-weight:300;text-align:center;padding:26px 12px;line-height:1.7;}
 
 /* modal */
@@ -182,6 +188,8 @@ body{font-family:'Jost',sans-serif;background:var(--black);color:var(--white);mi
     <div class="section-label">Today's Workout</div>
     <div id="today-list"></div>
     <button class="add-ex-btn" onclick="openBank()">+ Add an exercise</button>
+    <div class="section-label">Note for Kelly</div>
+    <textarea id="today-note" class="kelly-note" placeholder="How did this session feel? Anything you want Kelly to know? She will see this with your workout."></textarea>
     <button class="save-btn" onclick="saveWorkout()">Save workout to progress</button>
   </div>
 </div>
@@ -471,24 +479,49 @@ function saveWorkout(){
   if(!today.items.length){ alert('Add some exercises first.'); return; }
   const d=new Date();
   const title = today.preset ? (CATS.find(c=>c.key===today.preset.split('-')[0]).label+' · '+PRESETS[today.preset].label) : 'Custom workout';
+  const noteEl=document.getElementById('today-note');
+  const note=(noteEl&&noteEl.value||'').trim();
   const entry = { date:d.toISOString(), dateStr:d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}),
-    title, items: today.items.map(it=>({ name: it.custom ? it.name : EX[it.id].name, sets: it.sets.filter(s=>s.reps||s.load||s.rpe) })) };
+    title, note, items: today.items.map(it=>({ name: it.custom ? it.name : EX[it.id].name, sets: it.sets.filter(s=>s.reps||s.load||s.rpe) })) };
   logs.unshift(entry); persist();
+  if(noteEl) noteEl.value='';
   alert('Saved. Nice work.');
   go('page-progress');
 }
 function renderProgress(){
   const box=document.getElementById('progress-content');
   if(!logs.length){ box.innerHTML='<div class="empty-note">No saved workouts yet. Build one and hit save.</div>'; return; }
-  box.innerHTML = logs.map((L,li)=>{
+  const cards = logs.map((L,li)=>{
     const ex = L.items.map(it=>{
       const done = it.sets.map(s=>{ var pp=[]; if(s.reps) pp.push(s.reps+' reps'); if(s.load) pp.push(s.load); var tt=pp.join(' @ '); if(s.rpe) tt+=(tt?' · ':'')+'RPE '+s.rpe; return tt; }).filter(Boolean);
       const detail = done.length ? ' <span style="color:var(--muted)">('+done.join(', ')+')</span>' : '';
       return `<div class="lc-ex"><b>${it.name}</b>${detail}</div>`;
     }).join('');
-    return `<div class="log-card"><div class="lc-date">${L.dateStr}</div><div class="lc-title">${L.title}</div>${ex}<button class="del-log" onclick="delLog(${li})">Delete</button></div>`;
+    const noteHTML = L.note ? `<div class="lc-note"><b style="font-style:normal;color:var(--gold)">Note for Kelly:</b> ${L.note.replace(/</g,'&lt;')}</div>` : '';
+    return `<div class="log-card"><div class="lc-date">${L.dateStr}</div><div class="lc-title">${L.title}</div>${ex}${noteHTML}<button class="del-log" onclick="delLog(${li})">Delete</button></div>`;
   }).join('');
+  box.innerHTML = `<button class="share-btn" onclick="shareProgress()">Share with Kelly</button>` + cards;
 }
+function shareProgress(){
+  if(!logs.length){ alert('Nothing saved yet.'); return; }
+  let t = CLIENT_NAME + ' Workout Log\nOrthoCare Concierge\n\n';
+  logs.forEach(L=>{
+    t += L.dateStr + ' · ' + L.title + '\n';
+    L.items.forEach(it=>{
+      const done = it.sets.map(s=>{ var pp=[]; if(s.reps) pp.push(s.reps+' reps'); if(s.load) pp.push(s.load); var tt=pp.join(' @ '); if(s.rpe) tt+=(tt?' · ':'')+'RPE '+s.rpe; return tt; }).filter(Boolean);
+      t += '  - ' + it.name + (done.length ? ' (' + done.join(', ') + ')' : '') + '\n';
+    });
+    if(L.note) t += '  Note for Kelly: ' + L.note + '\n';
+    t += '\n';
+  });
+  if(navigator.share){ navigator.share({ title: CLIENT_NAME + ' workout log', text: t }).catch(()=>copyText(t)); }
+  else { copyText(t); }
+}
+function copyText(t){
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>alert('Copied. Paste it into a text or email to Kelly.'),()=>fallbackCopy(t)); }
+  else { fallbackCopy(t); }
+}
+function fallbackCopy(t){ const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); alert('Copied. Paste it into a text or email to Kelly.'); }catch(e){ alert('Copy not supported on this device.'); } document.body.removeChild(a); }
 function delLog(i){ if(!confirm('Delete this saved workout?')) return; logs.splice(i,1); persist(); renderProgress(); }
 
 /* ---- guidelines ---- */
